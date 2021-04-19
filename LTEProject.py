@@ -44,7 +44,7 @@ NR_RX_RSRP='NRxRSRP'
 NR_RX_RSRQ='NRxRSRQ'
 NA_VALUES=['-']
 WINDOW_LENGTH=20
-FUTURE_OFFSETS=[12, 16, 20, 24, 32]
+FUTURE_OFFSETS=[4, 8, 12, 16, 20, 24, 32]
 BATCH_SIZE=32
 STRIDE=1
 NODES=100
@@ -56,7 +56,8 @@ DROPOUT_RATIO=0.5
 MIN_KBPS = 10
 ENABLE_DISPLAY=False
 y_error_list = []
-DEBUG=0
+DEBUG=1
+
 
 # Load data
 def create_dataset():
@@ -93,23 +94,33 @@ for FUTURE_OFFSET in FUTURE_OFFSETS:
     start_index = 0
     end_index=df.shape[0]
     scaler = MinMaxScaler(feature_range=(0,1))
-    # scale data between 0 and 1
     if DEBUG > 0:
         data_transform = df.to_numpy()
     else:
+        # scale data between 0 and 1
         data_transform =scaler.fit_transform(df)
+  
     features_scaled=data_transform
     target_scaled=data_transform[:,0]
-    x_train, x_test, y_train, y_test = train_test_split(features_scaled, target_scaled, test_size=TEST_RATIO, random_state=1, shuffle=False)
-
+    target_scaled = np.reshape(target_scaled, (target_scaled.shape[0], 1))
+    target_scaled_full = np.array([])
+    
     if FUTURE_OFFSET > 0:
-        df.drop(df.tail(FUTURE_OFFSET-1).index,inplace=True) # drop last n rows
-        y_train = shift(y_train, (FUTURE_OFFSET-1) * -1, cval=np.NaN)
-        y_test = shift(y_test, (FUTURE_OFFSET-1) * -1, cval=np.NaN)
-        y_train = y_train[:(FUTURE_OFFSET-1) * -1]
-        y_test = y_test[:(FUTURE_OFFSET-1) * -1]
-        x_train = x_train[:(FUTURE_OFFSET-1) * -1]
-        x_test = x_test[:(FUTURE_OFFSET-1) * -1]
+        # drop last FUTURE_OFFSET rows
+        df.drop(df.tail(FUTURE_OFFSET).index,inplace=True)
+
+        target_scaled_full = target_scaled
+        print (target_scaled_full.shape)
+        print (target_scaled.shape)
+        print (features_scaled.shape)
+        x = 1
+        while x < FUTURE_OFFSET:
+            target_scaled_full = np.concatenate([target_scaled_full, shift(target_scaled, -x, cval=np.NaN)], axis=1)
+            x = x + 1
+        target_scaled_full = target_scaled_full[:(x-1) * -1]
+        features_scaled = features_scaled[:(x-1) * -1]
+
+    x_train, x_test, y_train, y_test = train_test_split(features_scaled, target_scaled_full, test_size=TEST_RATIO, random_state=1, shuffle=False)
 
     num_of_features=len(df.columns)
     train_generator = TimeseriesGenerator(x_train, y_train, length=WINDOW_LENGTH, stride=STRIDE, sampling_rate=SAMPLING_RATE, batch_size=BATCH_SIZE)
@@ -119,14 +130,16 @@ for FUTURE_OFFSET in FUTURE_OFFSETS:
         for i in range(len(train_generator)):
             x, y = train_generator[i]
             print('%s => %s' % (x, y))
+            value = input("Please enter an integer:\n")
+
     model = Sequential()
     model.add(LSTM(NODES, input_shape=(WINDOW_LENGTH, num_of_features), return_sequences=False))
     model.add(Dense(1))
     print(model.summary())
 
     early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
-                                                                                                      patience=10,
-                                                                                                      mode='min')
+                                                      patience=10,
+                                                      mode='min')
 
     cb_list = [early_stopping]
 
@@ -157,22 +170,26 @@ for FUTURE_OFFSET in FUTURE_OFFSETS:
     np.set_printoptions(threshold=sys.maxsize)
     y_true, y_pred = df[DOWNLOAD_BITRATE_KEY][rev_trans_test_pred.shape[0] * -1:],  rev_trans_test_pred[:,0]
     y_error =  np.abs((np.maximum(MIN_KBPS, y_true) - np.maximum(MIN_KBPS, y_pred))) / np.maximum(MIN_KBPS, y_pred) * 100
-    pd.set_option("display.max_rows", None, "display.max_columns", None)
-    print (y_true)
-    print (y_pred)
-    print (y_error)
-    print (np.max(y_error))
-    print (np.min(y_error))
     y_error_list.append(y_error)
+
+    if DEBUG > 0:
+        pd.set_option("display.max_rows", None, "display.max_columns", None)
+        print (y_true)
+        print (y_pred)
+        print (y_error)
+        print (np.max(y_error))
+        print (np.min(y_error))
 
     if ENABLE_DISPLAY:
         # Display ground truth and predictions on plot
         x_data = range(df.shape[0])
+        plt.title('Downlink Throughput (P'  + str(WINDOW_LENGTH) + 'F' + str(FUTURE_OFFSET) + ')')
         plt.plot(x_data[-y_true.shape[0]:], y_true, label='ground truth')
         plt.plot(x_data[-y_pred.shape[0]:], y_pred,  color='r', label='test prediction')
         plt.show()
 
         # Display MSE vs Epochs
+        plt.title('MSE vs Epochs (P'  + str(WINDOW_LENGTH) + 'F' + str(FUTURE_OFFSET) + ')')
         plt.plot(history.history['loss'], label='train')
         plt.plot(history.history['val_loss'], label='test')
         plt.xlabel("Epochs")
@@ -181,7 +198,7 @@ for FUTURE_OFFSET in FUTURE_OFFSETS:
         plt.show()
 
 i = 0
-fig, axs = plt.subplots(nrows=1, ncols=len(FUTURE_OFFSETS), sharex='all',  sharey='all')
+fig, axs = plt.subplots(nrows=1, ncols=len(FUTURE_OFFSETS), sharex='all', sharey='all')
 fig.suptitle('History and Horizon Combination')
 while i < len(FUTURE_OFFSETS):
     # Build the plot
