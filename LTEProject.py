@@ -56,6 +56,15 @@ DROPOUT_RATIO=0.5
 MIN_KBPS = 10
 ENABLE_DISPLAY=False
 y_error_list = []
+LONGITUDE_KEY='Longitude'
+LATITUDE_KEY='Latitude'
+SPEED_KEY='Speed'
+RSRP_KEY='RSRP'
+RSRQ_KEY='RSRQ'
+CQI_KEY='CQI'
+SERVING_CELL_LON='ServingCell_Lon'
+SERVING_CELL_LAT='ServingCell_Lat'
+SERVING_CELL_DIST='ServingCell_Distance'
 DEBUG=0
 
 # Load data
@@ -87,6 +96,9 @@ def create_dataset():
 create_dataset()
 df_original = pd.read_csv(OUTPUT_FILE_PATH, header=0, index_col=0, na_values=NA_VALUES, parse_dates=[TIMESTAMP_KEY])
 df_original = df_original.fillna(method='ffill')
+df_max_min = pd.DataFrame(column_names=df_original.columns())
+df_max_min
+
 
 future_offset_index = 0
 for FUTURE_OFFSET in FUTURE_OFFSETS:
