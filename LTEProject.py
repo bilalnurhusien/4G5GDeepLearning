@@ -28,9 +28,9 @@ from sklearn.preprocessing import QuantileTransformer
 from scipy.ndimage.interpolation import shift
 
 # Constants
-DATASET_FOLDER_PATH=r'/home/bn/813/LTEDeepLearning/Dataset'
-INPUT_FILE_PATH = DATASET_FOLDER_PATH +  r'/car/A_2018.01.18_14.37.56.csv'
-OUTPUT_FILE_PATH= DATASET_FOLDER_PATH +  r'/car/LTE-out.csv'
+DATASET_FOLDER_PATH=r'D:\ENSC813\Training\Training\LTE_Dataset\Dataset'
+INPUT_FILE_PATH = DATASET_FOLDER_PATH +  r'\car\A_2018.01.18_14.37.56.csv'
+OUTPUT_FILE_PATH= DATASET_FOLDER_PATH +  r'\car\LTE-out.csv'
 DOWNLOAD_BITRATE_KEY='DL_bitrate'
 DOWNLOAD_BITRATE_TEST_PRED_KEY='DL_bitrate_test_pred'
 DOWNLOAD_BITRATE_TRAIN_PRED_KEY='DL_bitrate_train_pred'
@@ -61,7 +61,9 @@ LATITUDE_KEY='Latitude'
 SPEED_KEY='Speed'
 RSRP_KEY='RSRP'
 RSRQ_KEY='RSRQ'
+RSSI_KEY='RSSI'
 CQI_KEY='CQI'
+SNR_KEY='SNR'
 SERVING_CELL_LON='ServingCell_Lon'
 SERVING_CELL_LAT='ServingCell_Lat'
 SERVING_CELL_DIST='ServingCell_Distance'
@@ -86,23 +88,49 @@ def create_dataset():
     print(dataset.head())
 
     # Drop columns that are repetitive or unneeded
-    dataset.drop(columns=[STATE_KEY, NETWORK_MODE_KEY, OPERATOR_NAME_KEY], inplace=True)
+    dataset.drop(columns=[STATE_KEY, SPEED_KEY, SERVING_CELL_DIST, NETWORK_MODE_KEY, OPERATOR_NAME_KEY, NR_RX_RSRP, NR_RX_RSRQ], inplace=True)
 
     # Save to file
     dataset.to_csv(OUTPUT_FILE_PATH)
     print(dataset.head())
     print(dataset.describe())
 
+# Create dataset
 create_dataset()
 df_original = pd.read_csv(OUTPUT_FILE_PATH, header=0, index_col=0, na_values=NA_VALUES, parse_dates=[TIMESTAMP_KEY])
 df_original = df_original.fillna(method='ffill')
-df_max_min = pd.DataFrame(column_names=df_original.columns())
-df_max_min
 
+# Set max and min values for features
+df_max_min = pd.DataFrame(columns=df_original.columns)
+max_row = pd.Series({ DOWNLOAD_BITRATE_KEY: 1000000,
+                      LONGITUDE_KEY: 180,
+                      LATITUDE_KEY: 90,
+                      RSRP_KEY: -44,
+                      RSRQ_KEY:-3,
+                      SNR_KEY: 30,
+                      CQI_KEY:30,
+                      RSSI_KEY:0,
+                      UPLOAD_BITRATE_KEY: 500000,
+                      SERVING_CELL_LON: 180,
+                      SERVING_CELL_LAT: 90})
+
+min_row = pd.Series({ DOWNLOAD_BITRATE_KEY: 0,
+                      LONGITUDE_KEY: -180,
+                      LATITUDE_KEY: -90,
+                      RSRP_KEY: -140,
+                      RSRQ_KEY:-20,
+                      SNR_KEY: 1,
+                      CQI_KEY:0,
+                      RSSI_KEY:-100,
+                      UPLOAD_BITRATE_KEY: 0,
+                      SERVING_CELL_LON: -180,
+                      SERVING_CELL_LAT: -90})
+df_max_min = df_max_min.append(max_row, ignore_index=True)
+df_max_min = df_max_min.append(min_row, ignore_index=True)
+print(df_max_min)
 
 future_offset_index = 0
 for FUTURE_OFFSET in FUTURE_OFFSETS:
-    
     df = df_original.copy()
     start_index = 0
     end_index=df.shape[0]
@@ -110,8 +138,9 @@ for FUTURE_OFFSET in FUTURE_OFFSETS:
     if DEBUG > 0:
         data_transform = df.to_numpy()
     else:
-        # scale data between 0 and 1
-        data_transform =scaler.fit_transform(df)
+        # scale data between 0 and 1 for max/min values
+        scaler.fit_transform(df_max_min)
+        data_transform = scaler.transform(df)
   
     features_scaled=data_transform
     target_scaled=data_transform[:,0]
