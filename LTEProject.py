@@ -26,11 +26,12 @@ from keras.preprocessing.sequence import TimeseriesGenerator
 from IPython.display import Image, display
 from sklearn.preprocessing import QuantileTransformer
 from scipy.ndimage.interpolation import shift
+from keras.utils.vis_utils import plot_model
 
 # Constants
-DATASET_FOLDER_PATH=r'D:\ENSC813\Training\Training\LTE_Dataset\Dataset'
-INPUT_FILE_PATH = DATASET_FOLDER_PATH +  r'\car\A_2018.01.18_14.37.56.csv'
-OUTPUT_FILE_PATH= DATASET_FOLDER_PATH +  r'\car\LTE-out.csv'
+DATASET_FOLDER_PATH=r'/home/bn/813/LTEDeepLearning/Dataset'
+INPUT_FILE_PATH = DATASET_FOLDER_PATH +  r'/car/A_2018.01.18_14.37.56.csv'
+OUTPUT_FILE_PATH= DATASET_FOLDER_PATH +  r'/car/LTE-out.csv'
 DOWNLOAD_BITRATE_KEY='DL_bitrate'
 DOWNLOAD_BITRATE_TEST_PRED_KEY='DL_bitrate_test_pred'
 DOWNLOAD_BITRATE_TRAIN_PRED_KEY='DL_bitrate_train_pred'
@@ -47,14 +48,15 @@ WINDOW_LENGTH=20
 FUTURE_OFFSETS=[4, 8, 12, 16, 20, 24, 32]
 BATCH_SIZE=32
 STRIDE=1
-NODES=100
+NODES_1=64
+NODES_2=32
 EPOCHS=200
 SAMPLING_RATE=1
 TEST_RATIO=0.2
-USE_DROPOUT=False
+USE_DROPOUT=True
 DROPOUT_RATIO=0.5
 MIN_KBPS = 10
-ENABLE_DISPLAY=False
+ENABLE_GRAPH_DISPLAY=True
 y_error_list = []
 LONGITUDE_KEY='Longitude'
 LATITUDE_KEY='Latitude'
@@ -69,6 +71,7 @@ SERVING_CELL_LAT='ServingCell_Lat'
 SERVING_CELL_DIST='ServingCell_Distance'
 CELL_ID='CellID'
 DEBUG=0
+SLOW_DEBUG=0
 
 # Load data
 def create_dataset():
@@ -100,6 +103,7 @@ def create_dataset():
 create_dataset()
 df_original = pd.read_csv(OUTPUT_FILE_PATH, header=0, index_col=0, na_values=NA_VALUES, parse_dates=[TIMESTAMP_KEY])
 df_original = df_original.fillna(method='ffill')
+future_offset_index = 0
 
 # Set max and min values for features
 df_max_min = pd.DataFrame(columns=df_original.columns)
@@ -110,7 +114,7 @@ max_row = pd.Series({ DOWNLOAD_BITRATE_KEY: 1000000,
                       RSRQ_KEY:-3,
                       SNR_KEY: 30,
                       CQI_KEY:30,
-                      RSSI_KEY:0,
+                      RSSI_KEY:-50,
                       UPLOAD_BITRATE_KEY: 500000,
                       SERVING_CELL_LON: 180,
                       SERVING_CELL_LAT: 90}, dtype='float')
@@ -119,7 +123,7 @@ min_row = pd.Series({ DOWNLOAD_BITRATE_KEY: 0,
                       LONGITUDE_KEY: -180,
                       LATITUDE_KEY: -90,
                       RSRP_KEY: -140,
-                      RSRQ_KEY:-20,
+                      RSRQ_KEY:-100,
                       SNR_KEY: 1,
                       CQI_KEY:0,
                       RSSI_KEY:-100,
@@ -128,46 +132,44 @@ min_row = pd.Series({ DOWNLOAD_BITRATE_KEY: 0,
                       SERVING_CELL_LAT: -90}, dtype='float')
 df_max_min = df_max_min.append(max_row, ignore_index=True)
 df_max_min = df_max_min.append(min_row, ignore_index=True)
-pd.set_option('display.max_rows', 500)
-pd.set_option('display.max_columns', 500)
-pd.set_option('display.width', 1000)
-print(df_max_min)
-future_offset_index = 0
+
+if DEBUG > 0:
+    df_original.plot(subplots=True)
+    plt.show()
+
+# Loop through all future offsets and make prediction
 for FUTURE_OFFSET in FUTURE_OFFSETS:
     df = df_original.copy()
-    scaler = MinMaxScaler(feature_range=(0,1))
-    if DEBUG > 0:
-        data_transform = df.to_numpy()
-    else:
-        # Scale data between 0 and 1 for max/min values
-        scaler.fit_transform(df_max_min)
-        data_transform = scaler.transform(df)
-  
-    features_scaled=data_transform
-    print(features_scaled)
-    pd.set_option("display.max_rows", None, "display.max_columns", None)
 
-    target_scaled=data_transform[:,0]
+    # Scale data between 0 and 1 using max/min values
+    scaler = MinMaxScaler(feature_range=(0,1))
+    scaler.fit_transform(df_max_min)
+    data_transform = scaler.transform(df)
+
+    # Prepare features and targets
+    features_scaled = data_transform
+    target_scaled = data_transform[:,0]
     target_scaled = np.reshape(target_scaled, (target_scaled.shape[0], 1))
     target_scaled_full = np.array([])
     
     if FUTURE_OFFSET > 0:
-        # Drop last FUTURE_OFFSET rows
-        df.drop(df.tail(FUTURE_OFFSET).index,inplace=True)
-
+        # Concatenate scaled data
         target_scaled_full = target_scaled
-        print (target_scaled_full.shape)
-        print (target_scaled.shape)
-        print (features_scaled.shape)
+        
         x = 1
         while x < FUTURE_OFFSET:
             target_scaled_full = np.concatenate([target_scaled_full, np.roll(target_scaled, x * -1, axis=0)], axis=1)
             x = x + 1
-        target_scaled_full = target_scaled_full[:(x-1) * -1]
-        features_scaled = features_scaled[:(x-1) * -1]
 
+        # Drop last FUTURE_OFFSET rows
+        target_scaled_full = target_scaled_full[:(FUTURE_OFFSET) * -1]
+        features_scaled = features_scaled[:(FUTURE_OFFSET) * -1]
+        df.drop(df.tail(FUTURE_OFFSET).index,inplace=True)
+
+    # Split test and training sets
     x_train, x_test, y_train, y_test = train_test_split(features_scaled, target_scaled_full, test_size=TEST_RATIO, random_state=1, shuffle=False)
 
+    # Create timeseries generator
     num_of_features=len(df.columns)
     train_generator = TimeseriesGenerator(x_train, y_train, length=WINDOW_LENGTH, stride=STRIDE, sampling_rate=SAMPLING_RATE, batch_size=BATCH_SIZE)
     test_generator = TimeseriesGenerator(x_test, y_test, length=WINDOW_LENGTH, sampling_rate=SAMPLING_RATE, batch_size=BATCH_SIZE)
@@ -177,9 +179,10 @@ for FUTURE_OFFSET in FUTURE_OFFSETS:
             x, y = train_generator[i]
             print('%s => %s' % (x, y))
 
+    # Train model
     model = Sequential()
-    model.add(LSTM(NODES, input_shape=(WINDOW_LENGTH, num_of_features), return_sequences=False))
-    model.add(Dense(FUTURE_OFFSET))
+    model.add(LSTM(NODES_1, input_shape=(WINDOW_LENGTH, num_of_features), return_sequences=False))
+    model.add(Dense(1))
     print(model.summary())
 
     early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
@@ -199,8 +202,8 @@ for FUTURE_OFFSET in FUTURE_OFFSETS:
     predictions = model.predict(test_generator)
     predictions_train = model.predict(train_generator)
 
-    df_prediction = pd.concat([pd.DataFrame(predictions[:,future_offset_index]), pd.DataFrame(x_test[:,1:][WINDOW_LENGTH:])], axis=1)
-    df_prediction_train = pd.concat([pd.DataFrame(predictions_train[:,future_offset_index]), pd.DataFrame(x_train[:,1:][WINDOW_LENGTH:])], axis=1)
+    df_prediction = pd.concat([pd.DataFrame(predictions[:,0]), pd.DataFrame(x_test[:,1:][WINDOW_LENGTH:])], axis=1)
+    df_prediction_train = pd.concat([pd.DataFrame(predictions_train[:,0]), pd.DataFrame(x_train[:,1:][WINDOW_LENGTH:])], axis=1)
 
     rev_trans_test_pred=scaler.inverse_transform(df_prediction)
     rev_trans_train_pred=scaler.inverse_transform(df_prediction_train)
@@ -225,7 +228,7 @@ for FUTURE_OFFSET in FUTURE_OFFSETS:
         print (np.max(y_error))
         print (np.min(y_error))
 
-    if ENABLE_DISPLAY:
+    if ENABLE_GRAPH_DISPLAY:
         # Display ground truth and predictions on plot
         x_data = range(df.shape[0])
         plt.title('Downlink Throughput (P'  + str(WINDOW_LENGTH) + 'F' + str(FUTURE_OFFSET) + ')')
@@ -244,11 +247,11 @@ for FUTURE_OFFSET in FUTURE_OFFSETS:
 
     future_offset_index = future_offset_index + 1
 
+# Build Absolute Residual Error Plot
 i = 0
 fig, axs = plt.subplots(nrows=1, ncols=len(FUTURE_OFFSETS), sharey='all')
 fig.suptitle('History and Horizon Combination')
 while i < len(FUTURE_OFFSETS):
-    # Build the plot
     axs[i].boxplot(y_error_list[i], showmeans=True)
     axs[i].set_xticklabels(['P' + str(WINDOW_LENGTH) + 'F' + str(FUTURE_OFFSETS[i])])
     axs[i].yaxis.grid(True)
