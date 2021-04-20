@@ -88,7 +88,9 @@ create_dataset()
 df_original = pd.read_csv(OUTPUT_FILE_PATH, header=0, index_col=0, na_values=NA_VALUES, parse_dates=[TIMESTAMP_KEY])
 df_original = df_original.fillna(method='ffill')
 
+future_offset_index = 0
 for FUTURE_OFFSET in FUTURE_OFFSETS:
+    
     df = df_original.copy()
     start_index = 0
     end_index=df.shape[0]
@@ -152,8 +154,8 @@ for FUTURE_OFFSET in FUTURE_OFFSETS:
     predictions = model.predict(test_generator)
     predictions_train = model.predict(train_generator)
 
-    df_prediction = pd.concat([pd.DataFrame(predictions[:,0]), pd.DataFrame(x_test[:,1:][WINDOW_LENGTH:])], axis=1)
-    df_prediction_train = pd.concat([pd.DataFrame(predictions_train[:,0]), pd.DataFrame(x_train[:,1:][WINDOW_LENGTH:])], axis=1)
+    df_prediction = pd.concat([pd.DataFrame(predictions[:,future_offset_index]), pd.DataFrame(x_test[:,1:][WINDOW_LENGTH:])], axis=1)
+    df_prediction_train = pd.concat([pd.DataFrame(predictions_train[:,future_offset_index]), pd.DataFrame(x_train[:,1:][WINDOW_LENGTH:])], axis=1)
 
     rev_trans_test_pred=scaler.inverse_transform(df_prediction)
     rev_trans_train_pred=scaler.inverse_transform(df_prediction_train)
@@ -194,6 +196,8 @@ for FUTURE_OFFSET in FUTURE_OFFSETS:
         plt.ylabel("Mean Squared Error")
         plt.legend(loc='upper right')
         plt.show()
+
+    future_offset_index = future_offset_index + 1
 
 i = 0
 fig, axs = plt.subplots(nrows=1, ncols=len(FUTURE_OFFSETS), sharex='all', sharey='all')
