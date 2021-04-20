@@ -67,6 +67,7 @@ SNR_KEY='SNR'
 SERVING_CELL_LON='ServingCell_Lon'
 SERVING_CELL_LAT='ServingCell_Lat'
 SERVING_CELL_DIST='ServingCell_Distance'
+CELL_ID='CellID'
 DEBUG=0
 
 # Load data
@@ -88,7 +89,7 @@ def create_dataset():
     print(dataset.head())
 
     # Drop columns that are repetitive or unneeded
-    dataset.drop(columns=[STATE_KEY, SPEED_KEY, SERVING_CELL_DIST, NETWORK_MODE_KEY, OPERATOR_NAME_KEY, NR_RX_RSRP, NR_RX_RSRQ], inplace=True)
+    dataset.drop(columns=[STATE_KEY, SPEED_KEY, CELL_ID, SERVING_CELL_DIST, NETWORK_MODE_KEY, OPERATOR_NAME_KEY, NR_RX_RSRP, NR_RX_RSRQ], inplace=True)
 
     # Save to file
     dataset.to_csv(OUTPUT_FILE_PATH)
@@ -112,7 +113,7 @@ max_row = pd.Series({ DOWNLOAD_BITRATE_KEY: 1000000,
                       RSSI_KEY:0,
                       UPLOAD_BITRATE_KEY: 500000,
                       SERVING_CELL_LON: 180,
-                      SERVING_CELL_LAT: 90})
+                      SERVING_CELL_LAT: 90}, dtype='float')
 
 min_row = pd.Series({ DOWNLOAD_BITRATE_KEY: 0,
                       LONGITUDE_KEY: -180,
@@ -124,25 +125,28 @@ min_row = pd.Series({ DOWNLOAD_BITRATE_KEY: 0,
                       RSSI_KEY:-100,
                       UPLOAD_BITRATE_KEY: 0,
                       SERVING_CELL_LON: -180,
-                      SERVING_CELL_LAT: -90})
+                      SERVING_CELL_LAT: -90}, dtype='float')
 df_max_min = df_max_min.append(max_row, ignore_index=True)
 df_max_min = df_max_min.append(min_row, ignore_index=True)
+pd.set_option('display.max_rows', 500)
+pd.set_option('display.max_columns', 500)
+pd.set_option('display.width', 1000)
 print(df_max_min)
-
 future_offset_index = 0
 for FUTURE_OFFSET in FUTURE_OFFSETS:
     df = df_original.copy()
-    start_index = 0
-    end_index=df.shape[0]
     scaler = MinMaxScaler(feature_range=(0,1))
     if DEBUG > 0:
         data_transform = df.to_numpy()
     else:
-        # scale data between 0 and 1 for max/min values
+        # Scale data between 0 and 1 for max/min values
         scaler.fit_transform(df_max_min)
         data_transform = scaler.transform(df)
   
     features_scaled=data_transform
+    print(features_scaled)
+    pd.set_option("display.max_rows", None, "display.max_columns", None)
+
     target_scaled=data_transform[:,0]
     target_scaled = np.reshape(target_scaled, (target_scaled.shape[0], 1))
     target_scaled_full = np.array([])
