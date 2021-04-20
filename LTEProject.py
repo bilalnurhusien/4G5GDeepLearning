@@ -28,7 +28,7 @@ from sklearn.preprocessing import QuantileTransformer
 from scipy.ndimage.interpolation import shift
 
 # Constants
-DATASET_FOLDER_PATH=r'D:\ENSC813\Training\Training\LTE_Dataset\Dataset'
+DATASET_FOLDER_PATH=r'/home/bn/813/LTEDeepLearning/Dataset'
 INPUT_FILE_PATH = DATASET_FOLDER_PATH +  r'/car/A_2018.01.18_14.37.56.csv'
 OUTPUT_FILE_PATH= DATASET_FOLDER_PATH +  r'/car/LTE-out.csv'
 DOWNLOAD_BITRATE_KEY='DL_bitrate'
@@ -196,13 +196,11 @@ for FUTURE_OFFSET in FUTURE_OFFSETS:
         plt.show()
 
 i = 0
-fig, axs = plt.subplots(nrows=1, ncols=len(FUTURE_OFFSETS), sharex='all', sharey='all')
+fig, axs = plt.subplots(nrows=1, ncols=len(FUTURE_OFFSETS), sharey='all')
 fig.suptitle('History and Horizon Combination')
 while i < len(FUTURE_OFFSETS):
     # Build the plot
-    x_pos = np.arange(len(['P' + str(WINDOW_LENGTH) + 'F' + str(FUTURE_OFFSETS[i])]))
-    axs[i].boxplot(y_error_list[i], positions=x_pos, showmeans=True)
-    axs[i].set_xticks(x_pos)
+    axs[i].boxplot(y_error_list[i], showmeans=True)
     axs[i].set_xticklabels(['P' + str(WINDOW_LENGTH) + 'F' + str(FUTURE_OFFSETS[i])])
     axs[i].yaxis.grid(True)
     i+=1
