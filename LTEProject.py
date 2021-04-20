@@ -28,7 +28,7 @@ from sklearn.preprocessing import QuantileTransformer
 from scipy.ndimage.interpolation import shift
 
 # Constants
-DATASET_FOLDER_PATH=r'/home/bn/813/LTEDeepLearning/Dataset'
+DATASET_FOLDER_PATH=r'D:\ENSC813\Training\Training\LTE_Dataset\Dataset'
 INPUT_FILE_PATH = DATASET_FOLDER_PATH +  r'/car/A_2018.01.18_14.37.56.csv'
 OUTPUT_FILE_PATH= DATASET_FOLDER_PATH +  r'/car/LTE-out.csv'
 DOWNLOAD_BITRATE_KEY='DL_bitrate'
@@ -56,8 +56,7 @@ DROPOUT_RATIO=0.5
 MIN_KBPS = 10
 ENABLE_DISPLAY=False
 y_error_list = []
-DEBUG=1
-
+DEBUG=0
 
 # Load data
 def create_dataset():
@@ -106,7 +105,7 @@ for FUTURE_OFFSET in FUTURE_OFFSETS:
     target_scaled_full = np.array([])
     
     if FUTURE_OFFSET > 0:
-        # drop last FUTURE_OFFSET rows
+        # Drop last FUTURE_OFFSET rows
         df.drop(df.tail(FUTURE_OFFSET).index,inplace=True)
 
         target_scaled_full = target_scaled
@@ -115,7 +114,7 @@ for FUTURE_OFFSET in FUTURE_OFFSETS:
         print (features_scaled.shape)
         x = 1
         while x < FUTURE_OFFSET:
-            target_scaled_full = np.concatenate([target_scaled_full, shift(target_scaled, -x, cval=np.NaN)], axis=1)
+            target_scaled_full = np.concatenate([target_scaled_full, np.roll(target_scaled, x * -1, axis=0)], axis=1)
             x = x + 1
         target_scaled_full = target_scaled_full[:(x-1) * -1]
         features_scaled = features_scaled[:(x-1) * -1]
@@ -130,11 +129,10 @@ for FUTURE_OFFSET in FUTURE_OFFSETS:
         for i in range(len(train_generator)):
             x, y = train_generator[i]
             print('%s => %s' % (x, y))
-            value = input("Please enter an integer:\n")
 
     model = Sequential()
     model.add(LSTM(NODES, input_shape=(WINDOW_LENGTH, num_of_features), return_sequences=False))
-    model.add(Dense(1))
+    model.add(Dense(FUTURE_OFFSET))
     print(model.summary())
 
     early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
@@ -154,8 +152,8 @@ for FUTURE_OFFSET in FUTURE_OFFSETS:
     predictions = model.predict(test_generator)
     predictions_train = model.predict(train_generator)
 
-    df_prediction = pd.concat([pd.DataFrame(predictions), pd.DataFrame(x_test[:,1:][WINDOW_LENGTH:])], axis=1)
-    df_prediction_train = pd.concat([pd.DataFrame(predictions_train), pd.DataFrame(x_train[:,1:][WINDOW_LENGTH:])], axis=1)
+    df_prediction = pd.concat([pd.DataFrame(predictions[:,0]), pd.DataFrame(x_test[:,1:][WINDOW_LENGTH:])], axis=1)
+    df_prediction_train = pd.concat([pd.DataFrame(predictions_train[:,0]), pd.DataFrame(x_train[:,1:][WINDOW_LENGTH:])], axis=1)
 
     rev_trans_test_pred=scaler.inverse_transform(df_prediction)
     rev_trans_train_pred=scaler.inverse_transform(df_prediction_train)
